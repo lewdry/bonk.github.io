@@ -274,6 +274,7 @@ let gameState = {
 };
 
 
+
 function initGame() {
     if (!canvas) {
         console.error('Canvas element not found');
@@ -282,11 +283,16 @@ function initGame() {
 
     resetGame();
 
-    document.addEventListener('pointerdown', handleStart, false);
-    canvas.addEventListener('pointermove', handleMove, false);
-    canvas.addEventListener('pointerup', handleEnd, false);
-    canvas.addEventListener('pointercancel', handleEnd, false);
+    document.addEventListener('pointerdown', handleStart, { passive: false });
+    canvas.addEventListener('pointermove', handleMove, { passive: false });
+    canvas.addEventListener('pointerup', handleEnd, { passive: false });
+    canvas.addEventListener('pointercancel', handleEnd, { passive: false });
     canvas.addEventListener('dblclick', handleDoubleTap, false);
+
+    // Prevent default touch behaviors on canvas
+    canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
 
     document.getElementById('startButton').addEventListener('click', dismissSplashScreen, false);
     

@@ -298,6 +298,8 @@ let collisionBuffers = {};
 let lastHiddenTime = 0;
 let lastTime = 0;
 let lastGrabbedPos = null;
+let lastTapTime = 0;
+const doubleTapDelay = 300;
 
 function initGame() {
     if (!canvas) {
@@ -311,7 +313,9 @@ function initGame() {
     canvas.addEventListener('pointermove', handleMove, { passive: false });
     canvas.addEventListener('pointerup', handleEnd, { passive: false });
     canvas.addEventListener('pointercancel', handleEnd, { passive: false });
-    canvas.addEventListener('dblclick', handleDoubleTap, false);
+    
+    // Remove this line:
+    // canvas.addEventListener('dblclick', handleDoubleTap, false);
 
     // Prevent default touch behaviors on canvas
     canvas.addEventListener('touchstart', (e) => {
@@ -496,6 +500,15 @@ function handleStart(event) {
     event.stopPropagation();
     const currentTime = Date.now();
     const pos = getEventPos(event);
+    
+    // Check for double tap
+    if (currentTime - lastTapTime < doubleTapDelay) {
+        resetGame();
+        lastTapTime = 0; // Reset to prevent triple tap
+        return;
+    }
+    
+    lastTapTime = currentTime;
     interactionStartPos = pos;
     lastCursorTime = currentTime;
     lastGrabbedPos = pos;
@@ -551,10 +564,4 @@ function handleEnd(event) {
         grabbedBall.grabbed = false;
         grabbedBall = null;
     }
-}
-
-function handleDoubleTap(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    resetGame();
 }

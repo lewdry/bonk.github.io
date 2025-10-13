@@ -3,8 +3,17 @@ const canvas = document.getElementById('drawingCanvas');
 const ctx = canvas.getContext('2d');
 const splashScreen = document.getElementById('splashScreen');
 
-// Drag coefficient
+// Game Constants
 const DRAG_COEFFICIENT = 0.999;
+const NUM_BALLS = 15;
+const COLLISION_COOLDOWN_FRAMES = 5;
+const SEPARATION_ITERATIONS = 10;
+const MAX_ACTIVE_SOUNDS = 20;
+const VELOCITY_THRESHOLD = 0.1;
+const BOUNDARY_MARGIN = 1;
+const HIDDEN_THRESHOLD = 5000; // 5 seconds
+const FIXED_TIME_STEP = 1000 / 60;
+const GRABBED_BALL_SCALE = 1.1;
 
 // Set canvas size to match window and calculate scale factor
 function resizeCanvas() {
@@ -70,6 +79,8 @@ class Ball {
         this.dy = (Math.random() - 0.5) * 5;
         this.colour = `rgb(${Math.random() * 255},${Math.random() * 255},${Math.random() * 255})`;
         this.grabbed = false;
+        this.collisionCooldown = 0;
+        this.lastCollidedWith = null;
     }
 
     move() {
@@ -78,8 +89,7 @@ class Ball {
             this.dx *= DRAG_COEFFICIENT;
             this.dy *= DRAG_COEFFICIENT;
 
-            const velocityThreshold = 0.1;
-            if (Math.abs(this.dx) < velocityThreshold && Math.abs(this.dy) < velocityThreshold) {
+            if (Math.abs(this.dx) < VELOCITY_THRESHOLD && Math.abs(this.dy) < VELOCITY_THRESHOLD) {
                 this.dx = 0;
                 this.dy = 0;
             }
@@ -88,37 +98,51 @@ class Ball {
             this.y += this.dy;
             this.resolveBoundaryCollision();
         }
+
+        // Decrement collision cooldown
+        if (this.collisionCooldown > 0) {
+            this.collisionCooldown--;
+        }
     }
 
     resolveBoundaryCollision() {
-        const margin = 1;
         const canvasWidth = canvas.width / window.devicePixelRatio;
         const canvasHeight = canvas.height / window.devicePixelRatio;
-        if (this.x - this.radius <= margin) {
-            this.x = this.radius + margin;
+        if (this.x - this.radius <= BOUNDARY_MARGIN) {
+            this.x = this.radius + BOUNDARY_MARGIN;
             this.dx = Math.abs(this.dx);
-        } else if (this.x + this.radius >= canvasWidth - margin) {
-            this.x = canvasWidth - this.radius - margin;
+        } else if (this.x + this.radius >= canvasWidth - BOUNDARY_MARGIN) {
+            this.x = canvasWidth - this.radius - BOUNDARY_MARGIN;
             this.dx = -Math.abs(this.dx);
         }
-        if (this.y - this.radius <= margin) {
-            this.y = this.radius + margin;
+        if (this.y - this.radius <= BOUNDARY_MARGIN) {
+            this.y = this.radius + BOUNDARY_MARGIN;
             this.dy = Math.abs(this.dy);
-        } else if (this.y + this.radius >= canvasHeight - margin) {
-            this.y = canvasHeight - this.radius - margin;
+        } else if (this.y + this.radius >= canvasHeight - BOUNDARY_MARGIN) {
+            this.y = canvasHeight - this.radius - BOUNDARY_MARGIN;
             this.dy = -Math.abs(this.dy);
         }
     }
 
     draw() {
-    const edgeWidth = 4;
+        const drawRadius = this.grabbed ? this.radius * GRABBED_BALL_SCALE : this.radius;
 
-    // Draw the main colored part of the ball
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-    ctx.fillStyle = this.colour;
-    ctx.fill();
-    ctx.closePath();
+        // Draw the main colored part of the ball
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, drawRadius, 0, Math.PI * 2);
+        ctx.fillStyle = this.colour;
+        ctx.fill();
+        ctx.closePath();
+
+        // Add subtle glow effect when grabbed
+        if (this.grabbed) {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, drawRadius + 2, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.closePath();
+        }
     }
 
     checkCollision(other) {
@@ -157,11 +181,11 @@ class Ball {
                     collisionCount++;
                     this.lastCollidedWith = other;
                     other.lastCollidedWith = this;
-                    this.collisionCooldown = 5; // Set cooldown for 5 frames
-                    other.collisionCooldown = 5;
+                    this.collisionCooldown = COLLISION_COOLDOWN_FRAMES;
+                    other.collisionCooldown = COLLISION_COOLDOWN_FRAMES;
                 }
     
-                // Velocity resolution
+                // Velocity resolution - FIXED: Store tangent velocities before modifying dx/dy
                 const normalX = dx / distance;
                 const normalY = dy / distance;
                 const tangentX = -normalY;
@@ -169,14 +193,18 @@ class Ball {
     
                 const dotProductThis = this.dx * normalX + this.dy * normalY;
                 const dotProductOther = other.dx * normalX + other.dy * normalY;
+
+                // Calculate tangent velocities BEFORE modifying anything
+                const thisVt = this.dx * tangentX + this.dy * tangentY;
+                const otherVt = other.dx * tangentX + other.dy * tangentY;
     
                 const v1n = (dotProductThis * (this.mass - other.mass) + 2 * other.mass * dotProductOther) / (this.mass + other.mass);
                 const v2n = (dotProductOther * (other.mass - this.mass) + 2 * this.mass * dotProductThis) / (this.mass + other.mass);
     
-                this.dx = v1n * normalX + (this.dx * tangentX + this.dy * tangentY) * tangentX;
-                this.dy = v1n * normalY + (this.dx * tangentX + this.dy * tangentY) * tangentY;
-                other.dx = v2n * normalX + (other.dx * tangentX + other.dy * tangentY) * tangentX;
-                other.dy = v2n * normalY + (other.dx * tangentX + other.dy * tangentY) * tangentY;
+                this.dx = v1n * normalX + thisVt * tangentX;
+                this.dy = v1n * normalY + thisVt * tangentY;
+                other.dx = v2n * normalX + otherVt * tangentX;
+                other.dy = v2n * normalY + otherVt * tangentY;
     
                 const minSpeed = 0;
                 const maxSpeed = 30;
@@ -213,11 +241,14 @@ class Ball {
                         source.start();
     
                         // Add the new source to the activeSources array
-                        activeSources.push(source);
+                        activeSources.push({ source, gainNode });
     
-                        // Cull older sources
-                        if (activeSources.length > 20) {
-                            activeSources.shift().stop(); // Stop the oldest source and remove it
+                        // Cull older sources and properly disconnect them
+                        if (activeSources.length > MAX_ACTIVE_SOUNDS) {
+                            const oldest = activeSources.shift();
+                            oldest.source.stop();
+                            oldest.source.disconnect();
+                            oldest.gainNode.disconnect();
                         }
     
                         console.log(`Collision speed: ${collisionSpeed.toFixed(2)}, Volume: ${clampedVolume.toFixed(2)}`);
@@ -257,23 +288,16 @@ let grabbedBall = null;
 let interactionStartPos = null;
 let lastCursorTime = 0;
 let gameRunning = false;
-let stoppedTime = 0;
 let stoppedFor = 0;
 let allBallsStopped = false;
 let lastStopTime = 0;
-let lastThrownBall = null;
-let collisionsAfterThrow = 0;
 let activeSources = []; // Array to keep track of active audio sources
 let splashScreenDismissed = false;
-let collisionSound;
 let audioContext;
 let collisionBuffers = {};
-let gameState = {
-    running: false,
-    audioResumed: false
-};
-
-
+let lastHiddenTime = 0;
+let lastTime = 0;
+let lastGrabbedPos = null;
 
 function initGame() {
     if (!canvas) {
@@ -290,13 +314,20 @@ function initGame() {
     canvas.addEventListener('dblclick', handleDoubleTap, false);
 
     // Prevent default touch behaviors on canvas
-    canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
-    canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
-    canvas.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    }, { passive: false });
+    canvas.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    }, { passive: false });
 
     document.getElementById('startButton').addEventListener('click', dismissSplashScreen, false);
-    
-    /* document.addEventListener('pointerdown', dismissSplashScreen, false); */
 
     showSplashScreen();
     requestAnimationFrame(gameLoop);
@@ -306,25 +337,20 @@ function dismissSplashScreen() {
     if (splashScreen.style.display !== 'none') {
         splashScreen.style.display = 'none';
         gameRunning = true;
-        gameState.running = true;  // Update gameState here
         splashScreenDismissed = true;
         reinitializeGameState();
     }
 }
 
 function resumeAudioContext() {
-    if (audioContext.state === 'suspended') {
+    if (audioContext && audioContext.state === 'suspended') {
         audioContext.resume().then(() => {
             console.log('AudioContext resumed successfully');
-            gameState.audioResumed = true;
         }).catch(error => {
             console.error('Failed to resume AudioContext:', error);
         });
     }
 }
-
-let lastHiddenTime = 0;
-const HIDDEN_THRESHOLD = 5000; // 5 seconds
 
 // Handle window resizing
 function handleResize() {
@@ -358,9 +384,8 @@ function handleVisibilityChange() {
             reinitializeGameState();
         } else {
             resumeAudioContext();
-            if (!gameState.running) {
+            if (!gameRunning) {
                 gameRunning = true;
-                gameState.running = true;
                 requestAnimationFrame(gameLoop);
             }
         }
@@ -369,27 +394,22 @@ function handleVisibilityChange() {
 
 function reinitializeGameState() {
     resumeAudioContext();
-    if (!gameState.running) {
+    if (!gameRunning) {
         gameRunning = true;
-        gameState.running = true;
         requestAnimationFrame(gameLoop);
     }
 }
 
 function resetGame() {
-    balls = Array.from({ length: 15 }, () => new Ball());
+    balls = Array.from({ length: NUM_BALLS }, () => new Ball());
     separateOverlappingBalls();
     collisionCount = 0;
-    stoppedTime = 0;
     stoppedFor = 0;
     allBallsStopped = false;
-    lastThrownBall = null;
-    collisionsAfterThrow = 0;
 }
 
 function separateOverlappingBalls() {
-    const iterations = 10;
-    for (let i = 0; i < iterations; i++) {
+    for (let i = 0; i < SEPARATION_ITERATIONS; i++) {
         let overlapsFound = false;
         for (let j = 0; j < balls.length; j++) {
             for (let k = j + 1; k < balls.length; k++) {
@@ -408,10 +428,6 @@ function showSplashScreen() {
     splashScreenDismissed = false;
 }
 
-const FIXED_TIME_STEP = 1000 / 60;
-let lastTime = 0;
-let lastGrabbedPos = null;
-
 function gameLoop(currentTime) {
     if (!gameRunning) {
         requestAnimationFrame(gameLoop);
@@ -426,9 +442,7 @@ function gameLoop(currentTime) {
             ball.move();
             for (let j = i + 1; j < balls.length; j++) {
                 if (ball.checkCollision(balls[j])) {
-                    if (ball.resolveCollision(balls[j])) {
-                        collisionCount++;
-                    }
+                    ball.resolveCollision(balls[j]);
                 }
             }
             ball.draw();
@@ -479,6 +493,7 @@ function getEventPos(event) {
 
 function handleStart(event) {
     event.preventDefault();
+    event.stopPropagation();
     const currentTime = Date.now();
     const pos = getEventPos(event);
     interactionStartPos = pos;
@@ -491,8 +506,6 @@ function handleStart(event) {
             ball.grabbed = true;
             ball.dx = 0;
             ball.dy = 0;
-            lastThrownBall = null;
-            collisionsAfterThrow = 0;
             break;
         }
     }
@@ -500,6 +513,7 @@ function handleStart(event) {
 
 function handleMove(event) {
     event.preventDefault();
+    event.stopPropagation();
     const pos = getEventPos(event);
 
     if (grabbedBall) {
@@ -527,6 +541,7 @@ function handleMove(event) {
 
 function handleEnd(event) {
     event.preventDefault();
+    event.stopPropagation();
     if (grabbedBall) {
         const pos = getEventPos(event);
         const timeDelta = (Date.now() - lastCursorTime) / 1000;
@@ -534,19 +549,12 @@ function handleEnd(event) {
         grabbedBall.dx = Math.max(-maxVelocity, Math.min(maxVelocity, (pos.x - interactionStartPos.x) / (timeDelta * 10)));
         grabbedBall.dy = Math.max(-maxVelocity, Math.min(maxVelocity, (pos.y - interactionStartPos.y) / (timeDelta * 10)));
         grabbedBall.grabbed = false;
-        lastThrownBall = grabbedBall;
-        collisionsAfterThrow = 0;
         grabbedBall = null;
     }
 }
 
 function handleDoubleTap(event) {
     event.preventDefault();
-    const currentTime = Date.now();
-    if (currentTime - lastCursorTime < 300) {
-        resetGame();
-    }
-    lastCursorTime = currentTime;
+    event.stopPropagation();
+    resetGame();
 }
-
-window.onload = initGame;

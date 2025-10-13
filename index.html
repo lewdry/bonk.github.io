@@ -3,35 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Bonk</title>
-    <link rel="stylesheet" href="styles.css"> 
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
+    <meta name="theme-color" content="#ffffff">
+    <title>Bonk - Bouncing Balls</title>
+    <meta name="description" content="A playful physics game with bouncing balls. Drag, throw, and watch them bonk!">
+    <link rel="stylesheet" href="styles.css">
     <link rel="apple-touch-icon" href="bonk.png">
+    <link rel="icon" type="image/png" href="bonk.png">
     <style>
         body, html {
             margin: 0;
             padding: 0;
             height: 100%;
             overflow: hidden;
+            overscroll-behavior: none;
+            touch-action: none;
         }
         canvas {
             display: block;
             width: 100%;
             height: 100%;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
-        
     </style>
 </head>
 <body>
     <!-- Splash screen -->
-    <div id="splashScreen">
+    <div id="splashScreen" role="dialog" aria-labelledby="gameTitle" aria-describedby="gameInstructions">
         <div>
-            <p>Bonk!<br>Bouncing balls.</p>
-            <p>Drag a ball to throw.<br>Double-tap screen to reset.</p>
-            <p>🟣➰🟢</p>
-            <button id="startButton">Start</button>
+            <h1 id="gameTitle" style="margin: 0 0 10px 0; font-size: 28px;">Bonk!</h1>
+            <p id="gameInstructions">Bouncing balls.<br>Drag a ball to throw it.<br>Double-tap to reset.</p>
+            <p style="font-size: 24px; margin: 10px 0;">🟣➰🟢</p>
+            <button id="startButton" aria-label="Start the game">Start</button>
         </div>
     </div>
-    <canvas id="drawingCanvas"></canvas>
+    <canvas id="drawingCanvas" aria-label="Game canvas with bouncing balls"></canvas>
     <script src="bonk.js"></script>
 </body>
 </html>
